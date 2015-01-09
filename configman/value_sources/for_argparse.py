@@ -51,13 +51,12 @@ import argparse
 import collections
 
 from configman.option import Option
-from configman.dotdict import DotDict, iteritems_breadth_first
-from configman.converters import boolean_converter, to_str
-
-from configman.argparse_ import (
-    ControlledErrorReportingArgumentParser,
-    ArgumentParser
+from configman.dotdict import (
+    DotDict,
+    iteritems_breadth_first,
 )
+from configman.converters import boolean_converter, to_str
+from configman.namespace import Namespace
 
 from source_exceptions import CantHandleTypeException
 
@@ -68,6 +67,105 @@ can_handle = (
     argparse,
 )
 
+
+#==============================================================================
+class ControlledErrorReportingArgumentParser(argparse.ArgumentParser):
+    #--------------------------------------------------------------------------
+    def __init__(self, *args, **kwargs):
+        super(ControlledErrorReportingArgumentParser, self).__init__(
+            *args, **kwargs
+        )
+        self.required_config = Namespace()
+
+    #--------------------------------------------------------------------------
+    def error(self, message):
+        if (
+            "not allowed" in message
+            or "ignored" in message
+            or "expected" in message
+            or "invalid" in message
+            or self.add_help
+        ):
+            # when we have "help" then we must also have proper error
+            # processing.  Without "help", we suppress the errors by
+            # doing nothing here
+            super(ControlledErrorReportingArgumentParser, self).error(message)
+
+    #--------------------------------------------------------------------------
+    def add_argument_from_option(self, qualified_name, option):
+        if option.foreign_data is not None and "argparse" in option.foreign_data:
+            args = option.foreign_data.argparse.args
+            kwargs = option.foreign_data.argparse.kwargs
+            action = super(
+                ControlledErrorReportingArgumentParser,
+                self
+            ).add_argument(
+                *args,
+                **kwargs
+            )
+            return action
+
+        opt_name = qualified_name
+
+        if option.is_argument:  # is positional argument
+            option_name = opt_name
+        else:
+            option_name = '--%s' % opt_name
+
+        if option.short_form:
+            option_short_form = '-%s' % option.short_form
+            args = (option_name, option_short_form)
+        else:
+            args = (option_name,)
+
+        kwargs = DotDict()
+        if option.from_string_converter in (bool, boolean_converter):
+            kwargs.action = 'store_true'
+        else:
+            kwargs.action = 'store'
+
+        kwargs.default = argparse.SUPPRESS
+        kwargs.help = option.doc
+        if not option.is_argument:
+            kwargs.dest = opt_name
+        action = \
+            super(ControlledErrorReportingArgumentParser, self).add_argument(
+                *args,
+                **kwargs
+            )
+        return action
+
+    #--------------------------------------------------------------------------
+    def parse_args(self, args=None, namespace=None, object_hook=None):
+        proposed_config = \
+            super(ControlledErrorReportingArgumentParser, self).parse_args(
+                args,
+                namespace
+            )
+        return self._edit_config(proposed_config, object_hook)
+
+    #--------------------------------------------------------------------------
+    def parse_known_args(self, args=None, namespace=None, object_hook=None):
+        result = super(ControlledErrorReportingArgumentParser, self) \
+            .parse_known_args(args, namespace)
+        try:
+            an_argparse_namespace, extra_arguments = result
+        except TypeError:
+            an_argparse_namespace = argparse.Namespace()
+            extra_arguments = result
+        return (
+            self._edit_config(an_argparse_namespace, object_hook),
+            extra_arguments
+        )
+
+    #--------------------------------------------------------------------------
+    def _edit_config(self, proposed_config, object_hook=None):
+        if object_hook is None:
+            object_hook = DotDict
+        config = object_hook()
+        for key, value in proposed_config.__dict__.iteritems():
+            config[key] = value
+        return config
 
 # -----------------------------------------------------------------------------
 def issubclass_with_no_type_error(potential_subclass, parent_class):
@@ -105,18 +203,38 @@ class ValueSource(object):
         )
 
     #--------------------------------------------------------------------------
-    @staticmethod
     def _option_to_command_line_str(an_option, key):
+        if 'argparse' in an_option.foreign_data:
+            return self._option_to_command_line_str_with_foreign_data(
+                an_option,
+                key
+            )
+        else:
+            return self._option_to_command_line_str_standard(
+                an_option,
+                key
+            )
+
+    #--------------------------------------------------------------------------
+    def _option_to_command_line_str(self, an_option, key):
         if an_option.is_argument:
-            if (an_option.number_of_values is not None
+            if an_option.foreign_data is not None:
+                nargs = an_option.foreign_data.argparse.kwargs.get(
+                    'nargs',
+                    None
+                )
+            else:
+                return to_str(an_option.value)
+            if (
+                nargs is not None
                 and isinstance(an_option.value, collections.Sequence)
             ):
                 return [to_str(x) for x in an_option.value]
             if an_option.value is None:
                 return []
-            return str(an_option.value)
-        if an_option.number_of_values == 0:
-            return None
+            return to_str(an_option.value)
+        #if an_option.foreign_data.argparse.kwargs.nargs == 0:
+            #return None
         if an_option.from_string_converter in (bool, boolean_converter):
             if an_option.value:
                 return "--%s" % key
@@ -134,19 +252,21 @@ class ValueSource(object):
         # of required arguments is not in place at run time.  It may be that
         # some config file or environment will bring them in later.   argparse
         # needs to cope using this placebo argv
-        for key in config_manager.option_definitions.keys_breadth_first():
-            an_option = config_manager.option_definitions[key]
         args = [
             self._option_to_command_line_str(
                 config_manager.option_definitions[key],
                 key
             )
             for key in config_manager.option_definitions.keys_breadth_first()
-            if isinstance(
-                config_manager.option_definitions[key],
-                Option
-            ) and config_manager.option_definitions[key].is_argument
+            if (
+                isinstance(
+                    config_manager.option_definitions[key],
+                    Option
+                )
+                and config_manager.option_definitions[key].is_argument
+            )
         ]
+
         flattened_arg_list = []
         for x in args:
             if isinstance(x, list):
@@ -160,47 +280,14 @@ class ValueSource(object):
         ]
         try:
             return final_arg_list + self.extra_args
-        except AttributeError:
+        except (AttributeError, TypeError):
             return final_arg_list
 
     #--------------------------------------------------------------------------
-    #@staticmethod
-    #def _val_as_str(value):
-        #try:
-            ## the value may be a modified 'dont_care' object,
-            ## that means we do care now and we should get the modified value &
-            ## return it as a bare value converted to a string
-            #return to_str(value.as_bare_value())
-        #except AttributeError:
-            ## 'dont_care' doesn't exist - this must be not be dont_care
-            #pass
-        #return to_str(value)
-
-    #--------------------------------------------------------------------------
-    #@staticmethod
-    #def _we_care_about_this_value(value):
-        #"""we want this value source to only return items that were not
-        #the unchanged defaults.  If this test succeeds, then the value is not
-        #the default and should be returned to configman.  If the test returns
-        #False, then argparse is just returning the default that configman
-        #already knows about.
-        #"""
-        #try:
-            #return not value.dont_care()
-        #except AttributeError:
-            #return True
-
-    #--------------------------------------------------------------------------
-    def get_values(self, config_manager, ignore_mismatches):
+    def get_values(self, config_manager, ignore_mismatches, object_hook=None):
         if ignore_mismatches:
-            print "creating a new parser"
-            if self.parent_parsers:
-                print "with parents:", self.parent_parsers
-            else:
-                print "with no parents"
-
             parser = self._create_new_argparse_instance(
-                self.parser_class,
+                self.argparse_class,
                 config_manager,
                 False,  # create auto help
                 self.parent_parsers,
@@ -213,13 +300,10 @@ class ValueSource(object):
                 argparse_namespace, self.extra_args = namespace_and_extra_args
             except TypeError:
                 argparse_namespace = argparse.Namespace()
-            self.parent_parsers = [self.parser]
         else:
             fake_args = self.create_fake_args(config_manager)
-            if '--help' in self.argv_source or "-h" in self.argv_source:
-                fake_args.append("--help")
             parser = self._create_new_argparse_instance(
-                self.parser_class,
+                self.argparse_class,
                 config_manager,
                 True,
                 self.parent_parsers,
@@ -228,15 +312,6 @@ class ValueSource(object):
                 args=fake_args,
             )
         return argparse_namespace
-
-        #d = DotDict()
-        #for key, value in argparse_namespace.__dict__.iteritems():
-            #if self._we_care_about_this_value(value):
-                #d[key] = value
-                ##d[key] = self._val_as_str(value)  # TODO: we ought to let
-                                                  ## argpars create it's own
-                                                  ## real values
-        #return d
 
     #--------------------------------------------------------------------------
     def _create_new_argparse_instance(
@@ -261,7 +336,7 @@ class ValueSource(object):
         for opt_name in config_manager.option_definitions.keys_breadth_first():
             an_option = config_manager.option_definitions[opt_name]
             if isinstance(an_option, Option):
-                parser.add_argument(an_option)
+                parser.add_argument_from_option(opt_name, an_option)
 
     #--------------------------------------------------------------------------
     @staticmethod

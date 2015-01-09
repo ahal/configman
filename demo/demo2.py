@@ -86,6 +86,7 @@ c = ConfigurationManager(definition_source,
                          value_sources,
                          app_name='demo2',
                          app_description=__doc__)
+print c.config_optional
 
 # fetch the DotDict version of the values
 config = c.get_config()

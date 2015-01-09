@@ -39,6 +39,7 @@ from configman.value_sources import (
     wrap_with_value_source_api,
     dispatch_request_to_write,
     file_extension_dispatch,
+    type_handler_dispatch,
 )
 
 
@@ -133,6 +134,8 @@ class ConfigurationManager(object):
         self.config_pathname = config_pathname
         self.config_optional = config_optional
 
+        self.use_auto_help = use_auto_help
+
         self.value_source_object_hook = value_source_object_hook
 
         self.app_name = app_name
@@ -161,6 +164,10 @@ class ConfigurationManager(object):
                     command_line
                 )
 
+        if self.use_auto_help and command_line in values_source_list:
+            cmd_handler = type_handler_dispatch[command_line]
+            cmd_handler[0].ValueSource._setup_auto_help(self)
+
         admin_tasks_done = False
         self.admin_controls_list = [
             'help',
@@ -172,8 +179,6 @@ class ConfigurationManager(object):
         ]
         self.options_banned_from_help = options_banned_from_help
 
-        if use_auto_help:
-            self._setup_auto_help()
         if use_admin_controls:
             admin_options = self._setup_admin_options(values_source_list)
             self.definition_source_list.append(admin_options)
@@ -234,9 +239,23 @@ class ConfigurationManager(object):
             # 'app_name' from the parameters passed in, if they exist.
             pass
 
-        if use_auto_help and self._get_option('help').value:
-            self.output_summary()
-            admin_tasks_done = True
+        try:
+            if use_auto_help and self._get_option('help').value:
+                self.output_summary()
+                admin_tasks_done = True
+        except NotAnOptionError:
+            # the current command-line implementation already has a help
+            # mechanism of its own that doesn't required the use of a
+            # option in configman.  This error is ignorable
+            pass
+
+        keys_blocked_by_suffix = [
+            key
+            for key in self.option_definitions.keys_breadth_first()
+            if key.endswith('$')
+        ]
+        if keys_blocked_by_suffix:
+            self.admin_controls_list.extend(keys_blocked_by_suffix)
 
         if use_admin_controls and self._get_option('admin.print_conf').value:
             self.print_conf()
@@ -575,6 +594,7 @@ class ConfigurationManager(object):
                 for a_value_source in self.values_source_list
             ]
 
+
             # overlay process:
             # fetch all the default values from the value sources before
             # applying the from string conversions
@@ -640,8 +660,11 @@ class ConfigurationManager(object):
                     try:
                         # try to fetch new requirements from this value
                         new_req = an_option.value.get_required_config()
-                    except AttributeError:
-                        new_req = an_option.value.required_config
+                    except (AttributeError, KeyError):
+                        if hasattr(an_option.value, 'required_config'):
+                            new_req = an_option.value.required_config
+                        else:
+                            new_req = None
                     # make sure what we got as new_req is actually a
                     # Mapping of some sort
                     if not isinstance(new_req, collections.Mapping):
@@ -684,6 +707,11 @@ class ConfigurationManager(object):
     #--------------------------------------------------------------------------
     def _check_for_mismatches(self, known_keys):
         """check for bad options from value sources"""
+        if "processor.processed_transform.FlashVersionRule.known_flash_identifiers.025105C956638D665850591768FB743D0" in known_keys:
+            assert False
+        print "known_keys"
+        for k in sorted(list(known_keys)):
+            print k
         for a_value_source in self.values_source_list:
             try:
                 if a_value_source.always_ignore_mismatches:
@@ -710,10 +738,21 @@ class ConfigurationManager(object):
                 allow_mismatches,
                 self.value_source_object_hook
             )
+            print "_check_for_mismatches", a_value_source, 'gives', type(value_source_mapping)
+            for k in value_source_mapping.keys_breadth_first(include_dicts=True):
+                v = value_source_mapping[k]
+            #for k, v in iteritems_breadth_first(value_source_mapping, include_dicts=True):
+                print a_value_source, value_source_mapping, k, v
+                #if k == "processor.processed_transform.FlashVersionRule.known_flash_identifiers":
+                    #print k, type(value_source_mapping[k])
+                #if k == "processor.processed_transform.FlashVersionRule.known_flash_identifiers.025105C956638D665850591768FB743D0":
+                    #print a_value_source, "has", k
+                    #assert False
             value_source_keys_set = set([
                 k for k in
                 DotDict(value_source_mapping).keys_breadth_first()
             ])
+
             # make a set of the keys that didn't match any of the known
             # keys in the requirements
             unmatched_keys = value_source_keys_set.difference(known_keys)
