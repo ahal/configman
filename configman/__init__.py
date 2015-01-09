@@ -25,11 +25,11 @@ from configman.converters import (
 from configman.environment import environment
 from configman.command_line import command_line
 
-try:
-    import argparse as command_line
-    from configman.argparse_ import ArgumentParser
-except ImportError:
-    import getopt as command_line
+#try:
+    #import argparse as command_line
+    #from configman.argparse_ import ArgumentParser
+#except ImportError:
+    #import getopt as command_line
 
 
 #------------------------------------------------------------------------------
