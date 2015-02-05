@@ -5,5 +5,9 @@
 # this will be expanded in the future when additional command line libraries
 # are supported
 
-import getopt as command_line
+try:
+    import argparse as command_line
+    from configman.def_sources.for_argparse import ArgumentParser
+except ImportError:
+    import getopt as command_line
 
