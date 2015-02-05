@@ -708,9 +708,6 @@ class ConfigurationManager(object):
         """check for bad options from value sources"""
         if "processor.processed_transform.FlashVersionRule.known_flash_identifiers.025105C956638D665850591768FB743D0" in known_keys:
             assert False
-        print "known_keys"
-        for k in sorted(list(known_keys)):
-            print k
         for a_value_source in self.values_source_list:
             try:
                 if a_value_source.always_ignore_mismatches:
@@ -737,14 +734,12 @@ class ConfigurationManager(object):
                 allow_mismatches,
                 self.value_source_object_hook
             )
-            print "_check_for_mismatches", a_value_source, 'gives', type(value_source_mapping)
             for k in value_source_mapping.keys_breadth_first(include_dicts=True):
                 v = value_source_mapping[k]
-            #for k, v in iteritems_breadth_first(value_source_mapping, include_dicts=True):
-                print a_value_source, value_source_mapping, k, v
-                #if k == "processor.processed_transform.FlashVersionRule.known_flash_identifiers":
+            #for k, v in iteritems_breadth_first(value_source_mapping, include_dicts=true):
+                #if k == "processor.processed_transform.flashversionrule.known_flash_identifiers":
                     #print k, type(value_source_mapping[k])
-                #if k == "processor.processed_transform.FlashVersionRule.known_flash_identifiers.025105C956638D665850591768FB743D0":
+                #if k == "processor.processed_transform.flashversionrule.known_flash_identifiers.025105c956638d665850591768fb743d0":
                     #print a_value_source, "has", k
                     #assert False
             value_source_keys_set = set([
