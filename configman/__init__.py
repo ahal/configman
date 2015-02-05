@@ -27,7 +27,6 @@ from configman.environment import environment
 from configman.command_line import command_line
 
 
-
 #------------------------------------------------------------------------------
 def configuration(*args, **kwargs):
     """this function just instantiates a ConfigurationManager and returns

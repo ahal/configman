@@ -9,7 +9,8 @@ try:
 except ImportError:
     raise SkipTest
 
-from configman import ArgumentParser, ConfigurationManager
+from configman import ConfigurationManager
+from configman.command_line import ArgumentParser
 from configman.converters import to_str
 
 

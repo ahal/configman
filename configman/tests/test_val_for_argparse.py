@@ -9,9 +9,9 @@ try:
 except ImportError:
     raise SkipTest
 
-from configman.argparse_ import (
+from configman.command_line import (
+    ArgumentParser,
     ControlledErrorReportingArgumentParser,
-    ArgumentParser
 )
 
 from mock import Mock
@@ -22,7 +22,7 @@ from functools import partial
 from configman import Namespace
 from configman.converters import (
     list_converter,
-    sequence_to_string,
+    list_to_str,
     to_str,
     dont_care
 )
@@ -77,7 +77,7 @@ class TestCaseForValSourceArgparse(TestCase):
                 item_converter=int
             ),
             to_string_converter=partial(
-                sequence_to_string,
+                list_to_str,
                 delimiter=' '
             ),
         )

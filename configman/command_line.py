@@ -8,6 +8,7 @@
 try:
     import argparse as command_line
     from configman.def_sources.for_argparse import ArgumentParser
+    from configman.value_sources.for_argparse import ControlledErrorReportingArgumentParser
 except ImportError:
     import getopt as command_line
 

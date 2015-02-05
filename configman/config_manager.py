@@ -633,13 +633,12 @@ class ConfigurationManager(object):
                         # the value source.  This assignment may come
                         # via acquisition, so the key given may not have
                         # been an exact match for what was returned.
-                        opt.has_changed = opt.default != val_src_dict[key]
-                        opt.default = val_src_dict[key]
+                        an_option.has_changed = an_option.default != val_src_dict[key]
+                        an_option.default = val_src_dict[key]
                         if key in all_reference_values:
                             # make sure that this value gets propagated to keys
                             # even if the keys have already been overlaid
                             known_keys -= set(all_reference_values[key])
-                        an_option.default = val_src_dict[key]
                     except KeyError, x:
                         pass  # okay, that source doesn't have this value
 
